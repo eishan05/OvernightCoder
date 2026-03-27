@@ -20,6 +20,97 @@ Verify before starting. If any are missing, stop and show the user the README in
 
 ## Process
 
+### Step 0: Parallel Mode Check
+
+If your prompt includes `STATE_FILE: <filename>`, you are running as a **parallel worker**. Set `STATE_FILE` to the provided filename and skip directly to Step 1.
+
+Otherwise, ask the user via `AskUserQuestion`:
+
+> "Run tasks in **parallel** (groups independent tasks into batches and runs batches simultaneously — faster for large backlogs) or **sequential** (one task at a time, default)?"
+
+- **Sequential:** Set `STATE_FILE = overnight-coder-state.json`. Proceed to Step 1.
+- **Parallel:** Proceed to Parallel Mode Setup below.
+
+#### Parallel Mode Setup
+
+**1. Check for an in-progress parallel run**
+
+Look for any files matching `overnight-batch-*.md` in the repo root. If found, read each corresponding `overnight-coder-state-{group}.json` (if it exists) to determine which groups are incomplete (have pending or in_progress tasks, or have no state file yet).
+
+If incomplete groups are found, ask:
+
+> "Found a previous parallel run. Incomplete groups: auth, ui. Resume them? (y/n)"
+
+- **Yes:** Skip to step 4, re-using existing batch files. Only spawn workers for incomplete groups.
+- **No:** Delete all `overnight-batch-*.md` files from the repo root and proceed to step 2.
+
+**2. Invoke grouper subagent**
+
+Read `grouper-prompt.md` (in the same directory as this file). Replace both placeholders:
+
+| Placeholder | Value |
+|---|---|
+| `{{TODO_FILE}}` | The backlog file path provided by the user |
+| `{{REPO_PATH}}` | Output of `git rev-parse --show-toplevel` |
+
+Dispatch a `general-purpose` Agent with the filled prompt.
+
+**3. Present grouping for approval**
+
+The grouper returns named groups. Present them to the user:
+
+> "Proposed parallel groups:
+> - **auth** (tasks 1, 3, 5): Authentication and session handling
+> - **ui** (tasks 2, 4): Frontend components
+> - **api** (tasks 6, 7, 8): REST API endpoints
+>
+> Proceed with this grouping? (y/n or describe adjustments)"
+
+Do not proceed until the user confirms. If the user requests adjustments, re-describe the grouping with their changes and confirm again.
+
+**4. Write batch files**
+
+For each group, write its `content:` block to `<repo-root>/overnight-batch-{name}.md`.
+
+**5. Spawn parallel workers**
+
+Read the full contents of this file (SKILL.md). For each group, construct a worker prompt:
+
+```
+You are a parallel overnight-coder worker.
+Backlog file: <repo-root>/overnight-batch-{name}.md
+STATE_FILE: overnight-coder-state-{name}.json
+Skip Step 0 — you are already in parallel worker mode (STATE_FILE is set above).
+
+---
+
+[full SKILL.md contents here]
+```
+
+Dispatch **all workers simultaneously** as parallel `general-purpose` Agent calls in a single message.
+
+**6. Wait and collect results**
+
+Wait for all workers to complete. Collect their final output (the full text of their Step 6 summary).
+
+**7. Print combined summary and end**
+
+```
+overnight-coder complete (parallel: N groups).
+
+[auth]  ✓ 3 done  ✗ 0 failed
+[ui]    ✓ 1 done  ✗ 1 failed — "Add dark mode": CSS module not found
+[api]   ✓ 3 done  ✗ 0 failed
+
+TOTAL: 7 done, 1 failed, 8 total
+
+PRs created:
+  - <url>
+  - <url>
+```
+
+**END** — do not continue to Step 1.
+
 ### Step 1: Parse Backlog
 
 Read the backlog file provided by the user (accepts any format — markdown checklist, numbered list, prose, GitHub issues export, etc.). Extract a flat ordered list of task descriptions using your judgment.
