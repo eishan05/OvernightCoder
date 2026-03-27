@@ -34,17 +34,7 @@ Present the extracted list and confirm:
 
 Do not proceed until the user confirms.
 
-### Step 2: Ask Merge Preference
-
-**Skip this step if resuming** — read `merge_preference` from the existing state file instead.
-
-Ask via `AskUserQuestion`:
-
-> "Merge preference: **autonomous** (auto-merge PRs to main after Codex review) or **review** (leave PRs open for you to review)?"
-
-Store as `autonomous` or `review`.
-
-### Step 3: Check for Previous Run
+### Step 2: Check for Previous Run
 
 Look for `overnight-coder-state.json` in the repo root.
 
@@ -53,8 +43,18 @@ If found, ask:
 > "Found previous run: N/M tasks complete, X failed. Resume? (y/n)"
 > (Read from state file: N = count of `done`, M = total tasks, X = count of `failed`)
 
-- **Yes:** Skip `done` tasks. Reset `in_progress` → `pending` (agent may have been mid-flight). For `failed` tasks: reset `attempts` to 0 and status to `pending` — they get one fresh attempt; if that attempt also fails (attempts reaches 2), mark permanently `failed`.
+- **Yes:** Skip `done` tasks. Reset `in_progress` → `pending` (agent may have been mid-flight). For `failed` tasks: reset `attempts` to 1 and status to `pending` — they get one fresh attempt; if that attempt also fails (attempts reaches 2), mark permanently `failed`.
 - **No:** Overwrite state file, start fresh.
+
+### Step 3: Ask Merge Preference
+
+**Skip this step if resuming** — read `merge_preference` from the existing state file instead.
+
+Ask via `AskUserQuestion`:
+
+> "Merge preference: **autonomous** (auto-merge PRs to main after Codex review) or **review** (leave PRs open for you to review)?"
+
+Store as `autonomous` or `review`.
 
 ### Step 4: Initialize State File
 

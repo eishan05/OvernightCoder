@@ -69,6 +69,8 @@ Note the PR URL printed by `gh pr create`.
 
 **REQUIRED SUB-SKILL:** `codex-review-loop`
 
+Invoke the skill by name. When the skill asks for a review target, provide the PR URL from Step 3. When it asks for model and effort, use `gpt-5.4` and `high`.
+
 Run the review loop against the PR. Settings:
 - **Model:** `gpt-5.4`
 - **Reasoning effort:** `high`
@@ -106,11 +108,11 @@ IF outer_cycles == 3 with issues still open:
 ### If merge preference is `autonomous`:
 
 ```bash
-# Merge the PR
-gh pr merge <PR-url> --merge --delete-branch
+# Note: --squash is the default strategy. Edit to --merge or --rebase to match your repo's policy.
+gh pr merge <PR-url> --squash --delete-branch
 
 # Clean up worktree
-git worktree remove <recorded-worktree-path>  # (the path you recorded in Step 1)
+git worktree remove --force <recorded-worktree-path>  # (the path you recorded in Step 1)
 ```
 
 Your final line must be:
@@ -122,7 +124,7 @@ DONE_MERGED
 
 ```bash
 # Clean up worktree, leave PR open
-git worktree remove <recorded-worktree-path>  # (the path you recorded in Step 1)
+git worktree remove --force <recorded-worktree-path>  # (the path you recorded in Step 1)
 ```
 
 Your final line must be:

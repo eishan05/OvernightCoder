@@ -88,7 +88,7 @@ Codex model and reasoning effort are set in `~/.claude/skills/overnight-coder/im
 
 Defaults: model `gpt-5.4`, reasoning effort `high`.
 
-To change them, edit the relevant lines in `implementer-prompt.md` before invoking the skill.
+To change them, edit the `Model:` and `Reasoning effort:` lines in the `## Step 4: Codex Review Loop` section of `~/.claude/skills/overnight-coder/implementer-prompt.md` before invoking the skill.
 
 ## State File
 
