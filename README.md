@@ -10,7 +10,7 @@ Install all of these before using overnight-coder:
 
 ### 1. Superpowers Plugin
 
-Install from the Claude Code plugin marketplace or follow instructions at https://superpowers.so
+Follow the install instructions at https://superpowers.so
 
 Verify the following skills are available in your Claude Code session:
 - `superpowers:using-git-worktrees`
@@ -32,8 +32,22 @@ Verify:
 codex --version
 ```
 
-### 4. overnight-coder Skill (this repo)
+### 4. GitHub CLI
 
+Install from https://cli.github.com and authenticate:
+
+```bash
+gh auth login
+```
+
+Verify:
+```bash
+gh auth status
+```
+
+### 5. overnight-coder Skill (this repo)
+
+From the repo root:
 ```bash
 cp -r skills/overnight-coder ~/.claude/skills/overnight-coder
 ```
@@ -66,9 +80,11 @@ Use the overnight-coder skill with TODO.md
 
 4. Let it run overnight. Check the final summary in the morning.
 
+> **Note:** Your project must have a GitHub remote configured (`git remote -v` should show a github.com URL).
+
 ## Configuration
 
-Codex model and reasoning effort are set in `skills/overnight-coder/implementer-prompt.md`.
+Codex model and reasoning effort are set in `~/.claude/skills/overnight-coder/implementer-prompt.md` (the installed copy).
 
 Defaults: model `gpt-5.4`, reasoning effort `high`.
 
@@ -96,7 +112,7 @@ echo "overnight-coder-state.json" >> .gitignore
    - Creates an isolated git worktree + branch (`overnight/<task-slug>`)
    - Implements using TDD (`superpowers:test-driven-development`)
    - Pushes branch and creates a GitHub PR
-   - Runs Codex review loop until clean (model `gpt-5.4`, effort `high`, max 9 passes)
+   - Runs Codex review loop until clean (model `gpt-5.4`, effort `high`, max 9 passes = 3 outer cycles × 3 inner iterations)
    - Merges or leaves PR open based on your preference
 4. If a task fails, retries once with a fresh agent. If it fails again, logs the failure and moves on.
 5. Compacts context between tasks so it can run overnight without hitting context limits
