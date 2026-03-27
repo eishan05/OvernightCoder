@@ -11,6 +11,8 @@ Implements an entire backlog overnight — one task at a time — using isolated
 
 ## Prerequisites
 
+**Announce:** `"[Preflight] Checking prerequisites..."`
+
 Verify before starting. If any are missing, stop and show the user the README install instructions.
 
 - Superpowers plugin (`superpowers:using-git-worktrees`, `superpowers:test-driven-development`, `superpowers:verification-before-completion`)
@@ -28,14 +30,14 @@ Otherwise, ask the user via `AskUserQuestion`:
 
 > "Run tasks in **parallel** (groups independent tasks into batches and runs batches simultaneously — faster for large backlogs) or **sequential** (one task at a time, default)?"
 
-- **Sequential:** Set `STATE_FILE = overnight-coder-state.json`. Proceed to Step 1.
+- **Sequential:** Derive `BACKLOG_SLUG` from the backlog filename: strip extension, lowercase, replace non-alphanumeric characters with hyphens, collapse multiple hyphens (e.g., `TODO.md` → `todo`, `Sprint 3 Tasks.txt` → `sprint-3-tasks`). Set `STATE_FILE = overnight-coder-state-{BACKLOG_SLUG}.json`. Proceed to Step 1.
 - **Parallel:** Proceed to Parallel Mode Setup below.
 
 #### Parallel Mode Setup
 
 **1. Check for an in-progress parallel run**
 
-Look for any files matching `overnight-batch-*.md` in the repo root. If found, read each corresponding `overnight-coder-state-{group}.json` (if it exists) to determine which groups are incomplete (have pending or in_progress tasks, or have no state file yet).
+Look for any files matching `overnight-batch-*.md` in the repo root. If found, derive `BACKLOG_SLUG` from the current backlog filename and read each corresponding `overnight-coder-state-{BACKLOG_SLUG}-{group}.json` (if it exists) to determine which groups are incomplete (have pending or in_progress tasks, or have no state file yet).
 
 If incomplete groups are found, ask:
 
@@ -72,6 +74,26 @@ Do not proceed until the user confirms. If the user requests adjustments, re-des
 
 For each group, write its `content:` block to `<repo-root>/overnight-batch-{name}.md`.
 
+**4.5. Sleep announcement**
+
+Run this command to prevent the Mac from sleeping:
+
+```bash
+caffeinate -i &
+```
+
+Then print:
+
+```
+All set! You can go to sleep now. 🌙 Good night!
+
+I'll work through your N tasks across M parallel groups while you rest.
+See you in the morning with a full summary.
+
+⚡ Don't forget to plug your Mac into a power source before you go!
+```
+(Replace N and M with actual task count and group count.)
+
 **5. Spawn parallel workers**
 
 Read the full contents of this file (SKILL.md). For each group, construct a worker prompt:
@@ -79,7 +101,8 @@ Read the full contents of this file (SKILL.md). For each group, construct a work
 ```
 You are a parallel overnight-coder worker.
 Backlog file: <repo-root>/overnight-batch-{name}.md
-STATE_FILE: overnight-coder-state-{name}.json
+STATE_FILE: overnight-coder-state-{BACKLOG_SLUG}-{name}.json
+(BACKLOG_SLUG is derived from the original backlog filename: e.g. TODO.md → todo)
 Skip Step 0 — you are already in parallel worker mode (STATE_FILE is set above).
 
 ---
@@ -113,6 +136,8 @@ PRs created:
 
 ### Step 1: Parse Backlog
 
+**Announce:** `"[Step 1/6] Parsing backlog..."`
+
 Read the backlog file provided by the user (accepts any format — markdown checklist, numbered list, prose, GitHub issues export, etc.). Extract a flat ordered list of task descriptions using your judgment.
 
 Present the extracted list and confirm:
@@ -127,6 +152,8 @@ Do not proceed until the user confirms.
 
 ### Step 2: Check for Previous Run
 
+**Announce:** `"[Step 2/6] Checking for a previous run..."`
+
 Look for `{STATE_FILE}` in the repo root.
 
 If found, ask:
@@ -139,6 +166,8 @@ If found, ask:
 
 ### Step 3: Ask Merge Preference
 
+**Announce:** `"[Step 3/6] Configuring merge preference..."`
+
 **Skip this step if resuming** — read `merge_preference` from the existing state file instead.
 
 Ask via `AskUserQuestion`:
@@ -148,6 +177,8 @@ Ask via `AskUserQuestion`:
 Store as `autonomous` or `review`.
 
 ### Step 4: Initialize State File
+
+**Announce:** `"[Step 4/6] Initializing state file..."`
 
 **Skip this step if resuming** — the existing state file already has the task list. Only run this step on a fresh start.
 
@@ -165,9 +196,33 @@ Write to `<repo-root>/{STATE_FILE}`:
 
 ### Step 5: Per-Task Loop
 
+**Announce:** `"[Step 5/6] Starting task loop — N tasks queued."`
+
+**Sleep announcement (sequential mode only — skip if running as a parallel worker)**
+
+Run this command to prevent your Mac from sleeping during the overnight run:
+
+```bash
+caffeinate -i &
+```
+
+Then print:
+
+```
+All set! You can go to sleep now. 🌙 Good night!
+
+I'll work through your N tasks while you rest.
+See you in the morning with a full summary.
+
+⚡ Don't forget to plug your Mac into a power source before you go!
+```
+(Replace N with the actual pending task count.)
+
 Repeat sequentially for each `pending` task:
 
 **5a. Mark in progress and compute branch name**
+
+**Announce:** `"[Task N/M] Starting: <task description>"`  (N = current task number, M = total tasks)
 
 Mark task `in_progress`, increment `attempts`, write state file.
 
@@ -212,6 +267,8 @@ Then immediately re-read `{STATE_FILE}` to restore the task list (compaction may
 Continue to the next `pending` task.
 
 ### Step 6: Final Summary
+
+**Announce:** `"[Step 6/6] All tasks complete! Generating summary..."`
 
 When no `pending` tasks remain, print:
 
