@@ -236,7 +236,8 @@ Omit the "Failed tasks:" section if there are no failed tasks. Omit "PRs created
 **Never:**
 - Proceed without user confirming the extracted task list
 - Skip asking merge preference
-- Dispatch implementers in parallel (sequential only — branch conflicts)
+- Dispatch implementers in parallel **within a single overnight-coder instance** (sequential only within each batch — branch conflicts)
 - Forget `/compact` between tasks
 - Forget to re-read state file after `/compact`
 - Start if any prerequisite is missing
+- Ask the parallel mode question in Step 0 if `STATE_FILE` was provided in your prompt context (you are a worker, not the orchestrator — skip Step 0 entirely)
