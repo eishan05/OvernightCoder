@@ -49,11 +49,14 @@ Look for `overnight-coder-state.json` in the repo root.
 If found, ask:
 
 > "Found previous run: N/M tasks complete, X failed. Resume? (y/n)"
+> (Read from state file: N = count of `done`, M = total tasks, X = count of `failed`)
 
-- **Yes:** Skip `done` tasks. Reset `in_progress` → `pending` (agent may have been mid-flight). Give `failed` tasks one fresh attempt — if that attempt also fails, mark permanently `failed`.
+- **Yes:** Skip `done` tasks. Reset `in_progress` → `pending` (agent may have been mid-flight). For `failed` tasks: reset `attempts` to 0 and status to `pending` — they get one fresh attempt; if that attempt also fails (attempts reaches 2), mark permanently `failed`.
 - **No:** Overwrite state file, start fresh.
 
 ### Step 4: Initialize State File
+
+**Skip this step if resuming** — the existing state file already has the task list. Only run this step on a fresh start.
 
 Write to `<repo-root>/overnight-coder-state.json`:
 
@@ -75,7 +78,7 @@ Repeat sequentially for each `pending` task:
 
 Mark task `in_progress`, increment `attempts`, write state file.
 
-Compute branch name: take the task description, lowercase it, replace all spaces and non-alphanumeric characters with hyphens, collapse multiple hyphens into one, truncate to 40 characters, prefix with `overnight/`.
+Compute branch name: take the task description, lowercase it, replace all spaces and non-alphanumeric characters with hyphens, collapse multiple hyphens into one, truncate the slug to 40 characters, then prefix with `overnight/` (total branch name will be up to 49 characters).
 
 Examples:
 - `"Add user auth with JWT"` → `overnight/add-user-auth-with-jwt`
@@ -84,6 +87,8 @@ Examples:
 **5b. Build and dispatch implementer**
 
 Read `implementer-prompt.md` (in the same directory as this file). Replace all four placeholders:
+
+Determine `{{REPO_PATH}}` by running `git rev-parse --show-toplevel` in the current working directory.
 
 | Placeholder | Value |
 |---|---|
@@ -101,6 +106,7 @@ The agent's last line will be one of:
 - `DONE_MERGED` → mark task `done`, no PR URL
 - `DONE <url>` → mark task `done`, save `pr_url: <url>`
 - `FAILED <reason>` → if `attempts < 2`, reset to `pending` and go back to 5a (one retry); if `attempts >= 2`, mark `failed` with `reason: <reason>`
+- Any other output → treat as `FAILED <raw last line of response>`
 
 Write state file after each result.
 
@@ -129,6 +135,8 @@ PRs created:
   - <url>
   - <url>
 ```
+
+Omit the "Failed tasks:" section if there are no failed tasks. Omit "PRs created:" if no PRs were left open (e.g., all merged via `autonomous` mode).
 
 ## Red Flags
 
