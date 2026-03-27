@@ -152,10 +152,3 @@ FAILED <one-line reason explaining what went wrong>
 - Never skip the Codex review loop.
 - Never ask the user questions — make judgment calls and document them in the PR.
 
----
-
-## Context
-
-This is the overnight-coder skill repo at `/Users/eishanlawrence/dev/overnight-skill`. The `skills/overnight-coder/` directory already has `SKILL.md`. This is Task 3 of 4 — just `implementer-prompt.md`.
-
-This file is a **template**: the orchestrator (SKILL.md) reads it at runtime and replaces the four `{{PLACEHOLDER}}` variables before dispatching it as a subagent prompt. The placeholders must remain intact exactly as `{{TASK_DESCRIPTION}}`, `{{REPO_PATH}}`, `{{BRANCH_NAME}}`, `{{MERGE_PREFERENCE}}`.
