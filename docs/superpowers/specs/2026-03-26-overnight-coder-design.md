@@ -55,7 +55,7 @@ All must be installed before using this skill:
 2. Use Claude's judgment to extract a flat ordered list of tasks. Present the extracted list to the user and confirm before proceeding (e.g. "I found 8 tasks. Does this look right?")
 3. Ask the user (via `AskUserQuestion`): **"Fully autonomous (auto-merge PRs to main) or review mode (leave PRs open for you to review)?"**
 4. Check for an existing `overnight-coder-state.json` in the repo root. If found, ask: **"Found a previous run: N/M tasks complete. Resume? (y/n)"**
-   - Yes → skip `done` tasks; `failed` tasks get one fresh attempt; `in_progress` tasks are reset to `pending` (implementer may have been mid-flight when session died)
+   - Yes → skip `done` tasks; `failed` tasks get one fresh attempt (if that attempt also fails, the task is permanently marked `failed` and skipped); `in_progress` tasks are reset to `pending` (implementer may have been mid-flight when session died)
    - No → overwrite state file, start fresh
 
 ### State File
@@ -156,10 +156,12 @@ Each implementer subagent is dispatched with a filled-in version of `implementer
 
 **Step 4: Codex Review Loop**
 
-Run using model `gpt-5.4`, reasoning effort `high` (defaults; documented as overridable).
+Run using model `gpt-5.4`, reasoning effort `high`. These are defaults set in `implementer-prompt.md` — to override, edit that file before invoking the skill.
 
 ```
-WHILE not clean:
+outer_cycles = 0
+WHILE not clean AND outer_cycles < 3:
+  outer_cycles++
   Run codex-review-loop (up to 3 iterations internally)
 
   IF codex found no issues:
@@ -172,7 +174,12 @@ WHILE not clean:
   IF 3-iteration cap reached AND implementer judges remaining issues
      are already addressed or not worth fixing:
     → exit loop, declare clean
+
+IF outer_cycles == 3 AND still issues remain:
+  → exit loop, declare clean (hard cap reached)
 ```
+
+**Hard cap:** Maximum 3 outer cycles (each up to 3 iterations) = at most 9 total Codex review passes per task.
 
 **Step 5: Finish**
 - If merge preference = `autonomous`:
