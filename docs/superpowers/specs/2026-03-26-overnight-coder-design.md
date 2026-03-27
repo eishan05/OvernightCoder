@@ -43,7 +43,8 @@ All must be installed before using this skill:
 - `superpowers:using-git-worktrees`
 - `superpowers:test-driven-development`
 - `superpowers:verification-before-completion`
-- `superpowers:finishing-a-development-branch`
+
+> Note: `superpowers:finishing-a-development-branch` was considered but not used — it is interactive (presents 4 options to the user) and does not fit the autonomous implementer model. Step 5 of the implementer uses direct `gh pr merge` commands instead.
 
 ---
 
