@@ -1,122 +1,119 @@
-# overnight-coder
+# OvernightCoder
 
-An overnight autonomous coding skill for Claude Code. Give it your backlog — it implements every task while you sleep.
+You're paying for Claude Code and Codex subscriptions. But when you go to bed, those subscriptions sit idle. OvernightCoder fixes that.
 
-For each task, overnight-coder creates an isolated branch, implements the task using TDD, gets the code reviewed by Codex, and either merges the PR or leaves it open for you to review.
+Give it a list of tasks, go to sleep, and wake up to pull requests.
 
-## Prerequisites
+## The Problem
 
-Install all of these before using overnight-coder:
+Most developers work on one thing at a time. Your backlog piles up. Meanwhile, you're paying for AI coding tools that do nothing for 8+ hours every night.
 
-### 1. Superpowers Plugin
+OvernightCoder takes your to-do list and works through it while you sleep. For each task, it:
 
-Follow the install instructions at https://superpowers.so
+1. Creates a separate branch so nothing conflicts
+2. Writes tests first, then writes the code to pass them
+3. Gets the code reviewed automatically by Codex
+4. Opens a pull request (or merges it for you)
+5. Moves on to the next task
 
-Verify the following skills are available in your Claude Code session:
-- `superpowers:using-git-worktrees`
-- `superpowers:test-driven-development`
-- `superpowers:verification-before-completion`
+In the morning, you get a summary of what got done and links to every PR.
 
-### 2. codex-review-loop Skill
+## What You Need
 
-```bash
+Before using OvernightCoder, make sure you have:
+
+- **A Mac or Linux machine with systemd** (it keeps your computer awake overnight — uses `caffeinate` on macOS or `systemd-inhibit` on Linux)
+- **Claude Code** with the [Superpowers](https://superpowers.so) plugin installed
+- **Codex CLI** installed from [github.com/openai/codex](https://github.com/openai/codex) (run `codex --version` to check)
+- **GitHub CLI** installed from [cli.github.com](https://cli.github.com) and logged in (run `gh auth status` to check)
+- **A project on GitHub** with a test suite already set up
+
+## Installation
+
+### Option A: Copy-paste this prompt into Claude Code
+
+Open Claude Code and paste this entire block:
+
+```
+Install the overnight-coder skill and its dependency, the codex-review-loop skill. Run these two commands:
+
 git clone https://github.com/eishan05/codex-review-loop ~/.claude/skills/codex-review-loop
+git clone https://github.com/eishan05/OvernightCoder /tmp/OvernightCoder && cp -r /tmp/OvernightCoder/skills/overnight-coder ~/.claude/skills/overnight-coder && rm -rf /tmp/OvernightCoder
+
+Then verify both skills are installed by listing the contents of ~/.claude/skills/overnight-coder and ~/.claude/skills/codex-review-loop.
 ```
 
-### 3. Codex CLI
-
-Install from https://github.com/openai/codex
-
-Verify:
-```bash
-codex --version
-```
-
-### 4. GitHub CLI
-
-Install from https://cli.github.com and authenticate:
+### Option B: Install manually
 
 ```bash
-gh auth login
+# 1. Install the codex-review-loop skill (required dependency)
+git clone https://github.com/eishan05/codex-review-loop ~/.claude/skills/codex-review-loop
+
+# 2. Install overnight-coder
+git clone https://github.com/eishan05/OvernightCoder /tmp/OvernightCoder
+cp -r /tmp/OvernightCoder/skills/overnight-coder ~/.claude/skills/overnight-coder
+rm -rf /tmp/OvernightCoder
 ```
 
-Verify:
-```bash
-gh auth status
-```
+## How to Use It
 
-### 5. overnight-coder Skill (this repo)
-
-From the repo root:
-```bash
-cp -r skills/overnight-coder ~/.claude/skills/overnight-coder
-```
-
-Or if cloning fresh:
-```bash
-git clone https://github.com/eishan05/overnight-coder
-cp -r overnight-coder/skills/overnight-coder ~/.claude/skills/overnight-coder
-```
-
-## Usage
-
-1. Create a backlog file in your project (any format works):
+**1. Write a to-do list file in your project.** Any format works. For example, a `TODO.md`:
 
 ```markdown
-- [ ] Add user authentication with JWT tokens
-- [ ] Fix the login redirect bug
-- [ ] Add payment module with Stripe
+- [ ] Add user login with email and password
+- [ ] Fix the bug where the homepage redirects twice
+- [ ] Add a Stripe payment page
+- [ ] Write an API endpoint for user profiles
 ```
 
-2. Open Claude Code in your project directory and invoke the skill:
+**2. Open Claude Code in your project folder and type:**
 
 ```
 Use the overnight-coder skill with TODO.md
 ```
 
-3. Answer two questions at startup:
-   - **Merge preference:** `autonomous` (auto-merge PRs) or `review` (leave PRs open for you to review)
-   - If a previous run exists: resume or start fresh
+**3. Answer two quick questions:**
+- **Merge preference** - pick `autonomous` if you want PRs merged automatically, or `review` if you'd rather look at them yourself in the morning
+- **Sequential or parallel** - sequential is safer (one task at a time), parallel is faster (groups independent tasks together)
 
-4. Let it run overnight. Check the final summary in the morning.
+**4. Go to sleep.** OvernightCoder keeps your computer awake and works through the list. Keep the lid open or configure your OS to not suspend on lid close.
 
-> **Note:** Your project must have a GitHub remote configured (`git remote -v` should show a github.com URL).
+**5. Check the summary in the morning.** You'll see which tasks succeeded, which failed (and why), and links to every pull request.
+
+## How It Works (Plain English)
+
+For each task on your list, OvernightCoder:
+
+- Makes a clean copy of your code in a separate folder (so tasks don't step on each other)
+- Writes tests for what the task should do
+- Writes the code to make those tests pass
+- Pushes the code and opens a pull request on GitHub
+- Asks Codex to review the code (up to 9 review passes)
+- Fixes anything Codex flags
+- Merges the PR or leaves it for you, depending on what you chose
+- Clears its memory and moves on to the next task
+
+If a task fails, it tries once more with a fresh start. If it fails again, it logs why and moves on - one bad task won't block the rest.
+
+## Resuming a Stopped Run
+
+If your run gets interrupted (power outage, accidental close, etc.), just run the same command again:
+
+```
+Use the overnight-coder skill with TODO.md
+```
+
+It saves progress to a state file, so it'll ask if you want to pick up where you left off.
 
 ## Configuration
 
-Codex model and reasoning effort are set in `~/.claude/skills/overnight-coder/implementer-prompt.md` (the installed copy).
+The default Codex review model is `gpt-5.4` with high reasoning effort. To change this, edit the file at:
 
-Defaults: model `gpt-5.4`, reasoning effort `high`.
-
-To change them, edit the `Model:` and `Reasoning effort:` lines in the `## Step 4: Codex Review Loop` section of `~/.claude/skills/overnight-coder/implementer-prompt.md` before invoking the skill.
-
-## State File
-
-overnight-coder saves progress to `overnight-coder-state.json` in your repo root. This file enables resuming interrupted runs.
-
-To start completely fresh, delete it:
-```bash
-rm overnight-coder-state.json
+```
+~/.claude/skills/overnight-coder/implementer-prompt.md
 ```
 
-To prevent it from being committed:
-```bash
-echo "overnight-coder-state.json" >> .gitignore
-```
-
-## How It Works
-
-1. Parses your backlog into a flat task list (confirms with you before starting)
-2. Asks your merge preference once
-3. For each task sequentially:
-   - Creates an isolated git worktree + branch (`overnight/<task-slug>`)
-   - Implements using TDD (`superpowers:test-driven-development`)
-   - Pushes branch and creates a GitHub PR
-   - Runs Codex review loop until clean (model `gpt-5.4`, effort `high`, max 9 passes = 3 outer cycles × 3 inner iterations)
-   - Merges or leaves PR open based on your preference
-4. If a task fails, retries once with a fresh agent. If it fails again, logs the failure and moves on.
-5. Compacts context between tasks so it can run overnight without hitting context limits
-6. Prints a final summary of done/failed tasks and PR URLs
+Look for the `Model:` and `Reasoning effort:` lines in the Codex Review Loop section.
 
 ## License
 

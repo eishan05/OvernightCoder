@@ -24,9 +24,9 @@ Verify before starting. If any are missing, stop and provide these installation 
 - Superpowers plugin: install from https://github.com/superpowers-sh/superpowers
 - `codex-review-loop` skill: `git clone https://github.com/eishan05/codex-review-loop ~/.claude/skills/codex-review-loop`
 - Codex CLI: see https://github.com/openai/codex for install instructions
-- GitHub CLI: `brew install gh && gh auth login`
+- GitHub CLI: install from https://cli.github.com, then `gh auth login`
 
-- **macOS** (skill uses `caffeinate` for sleep prevention and `md5` for hashing — Linux/Windows not supported)
+- **macOS or Linux with systemd** (requires `caffeinate` on macOS or `systemd-inhibit` on Linux for sleep prevention — Windows not supported)
 - Superpowers plugin (`superpowers:using-git-worktrees`, `superpowers:test-driven-development`, `superpowers:verification-before-completion`)
 - `codex-review-loop` skill at `~/.claude/skills/codex-review-loop/` (https://github.com/eishan05/codex-review-loop)
 - Codex CLI: `codex --version` must succeed
@@ -67,14 +67,14 @@ Ask the user via `AskUserQuestion`:
 
 > "Run tasks in **parallel** (groups independent tasks into batches and runs batches simultaneously — faster for large backlogs) or **sequential** (one task at a time, default)?"
 
-- **Sequential:** Derive `BACKLOG_SLUG` from the backlog file path: strip the filename's extension, lowercase, replace non-alphanumeric characters with hyphens, collapse multiple hyphens, then append `-` followed by the first 6 characters of the MD5 hash of the absolute path (e.g., run `printf "%s" "<absolute_path>" | md5 | head -c 6`). This prevents collisions between different backlogs with the same filename (e.g., `TODO.md` at `/proj/foo/TODO.md` → `todo-a3f9c2`). Set `STATE_FILE = overnight-coder-state-{BACKLOG_SLUG}.json`. Proceed to Step 1.
+- **Sequential:** Derive `BACKLOG_SLUG` from the backlog file path: strip the filename's extension, lowercase, replace non-alphanumeric characters with hyphens, collapse multiple hyphens, then append `-` followed by the first 6 characters of the MD5 hash of the absolute path. Use the cross-platform hash command: `if command -v md5sum &>/dev/null; then printf "%s" "<absolute_path>" | md5sum | head -c 6; else printf "%s" "<absolute_path>" | md5 | head -c 6; fi`. This prevents collisions between different backlogs with the same filename (e.g., `TODO.md` at `/proj/foo/TODO.md` → `todo-a3f9c2`). Set `STATE_FILE = overnight-coder-state-{BACKLOG_SLUG}.json`. Proceed to Step 1.
 - **Parallel:** Proceed to Parallel Mode Setup below.
 
 #### Parallel Mode Setup
 
 **0. Derive BACKLOG_SLUG**
 
-Before doing anything else, derive `BACKLOG_SLUG` from the backlog file path using the same hashing rule as sequential mode: strip the filename extension, lowercase, replace non-alphanumeric characters with hyphens, collapse multiple hyphens, then append `-` followed by the first 6 characters of the MD5 hash of the absolute path.
+Before doing anything else, derive `BACKLOG_SLUG` from the backlog file path using the same hashing rule as sequential mode: strip the filename extension, lowercase, replace non-alphanumeric characters with hyphens, collapse multiple hyphens, then append `-` followed by the first 6 characters of the MD5 hash of the absolute path. Use the cross-platform hash command: `if command -v md5sum &>/dev/null; then printf "%s" "<absolute_path>" | md5sum | head -c 6; else printf "%s" "<absolute_path>" | md5 | head -c 6; fi`.
 
 **1. Check for an in-progress parallel run**
 
@@ -87,7 +87,7 @@ If incomplete groups are found, ask:
 
 > "Found a previous parallel run. Incomplete groups: auth, ui. Resume them? (y/n)"
 
-- **Yes:** Read `MERGE_PREFERENCE` from the orchestrator manifest file `overnight-coder-parallel-{BACKLOG_SLUG}.json` (written at Step 5 of setup). If the manifest does not exist (interrupted before manifest was written), ask the user for merge preference again. In each group state file, reset any tasks with status `in_progress` to `pending` (the agent may have been mid-flight when interrupted). Start caffeinate (same as Step 6.6 — write PID to `/tmp/overnight-coder-caffeinate-{BACKLOG_SLUG}.pid`) before proceeding. Skip to Step 7, re-using existing batch files and state files. Only dispatch implementers for incomplete groups.
+- **Yes:** Read `MERGE_PREFERENCE` from the orchestrator manifest file `overnight-coder-parallel-{BACKLOG_SLUG}.json` (written at Step 5 of setup). If the manifest does not exist (interrupted before manifest was written), ask the user for merge preference again. In each group state file, reset any tasks with status `in_progress` to `pending` (the agent may have been mid-flight when interrupted). Start the sleep inhibitor (same as Step 6.6 — write PID to `/tmp/overnight-coder-caffeinate-{BACKLOG_SLUG}.pid`) before proceeding. Skip to Step 7, re-using existing batch files and state files. Only dispatch implementers for incomplete groups.
 - **No:** Before deleting any state files, read each `overnight-coder-state-{BACKLOG_SLUG}-{group}.json` and collect all task `branch` values that are non-null. For each collected branch, run the same pre-flight cleanup used for sequential retries (remove stale worktree, delete local branch, delete remote branch, close open PR — see Step 5a). Then delete all `overnight-batch-{BACKLOG_SLUG}-*.md` files, all `overnight-coder-state-{BACKLOG_SLUG}-*.json` files, and the `overnight-coder-parallel-{BACKLOG_SLUG}.json` manifest. Proceed to step 2.
 
 **2. Extract and confirm task list**
@@ -185,11 +185,19 @@ Resolve once — used for every implementer dispatch in step 7:
 
 **6.6. Sleep announcement**
 
-Run this command to prevent the Mac from sleeping and write the PID to a file:
+Run this command to prevent the machine from idle-sleeping and write the PID to a file. The command detects macOS vs Linux automatically. Note: this does **not** prevent lid-close suspend on all platforms — the user-facing message below tells the user to keep the lid open or configure their OS separately.
 
 ```bash
-caffeinate -i &
-echo $! > /tmp/overnight-coder-caffeinate-{BACKLOG_SLUG}.pid
+if command -v caffeinate &>/dev/null; then
+  caffeinate -is &
+  echo $! > /tmp/overnight-coder-caffeinate-{BACKLOG_SLUG}.pid
+elif command -v systemd-inhibit &>/dev/null; then
+  systemd-inhibit --what=idle:sleep:handle-lid-switch --who=overnight-coder --why="Running overnight backlog" sleep infinity &
+  echo $! > /tmp/overnight-coder-caffeinate-{BACKLOG_SLUG}.pid
+else
+  echo "WARNING: No sleep inhibitor found (caffeinate or systemd-inhibit required). Ensure your machine stays awake manually."
+  echo "" > /tmp/overnight-coder-caffeinate-{BACKLOG_SLUG}.pid
+fi
 ```
 
 Then print:
@@ -200,7 +208,7 @@ All set! You can go to sleep now. 🌙 Good night!
 I'll work through your N tasks across M parallel groups while you rest.
 See you in the morning with a full summary.
 
-⚡ Don't forget to plug your Mac into a power source before you go!
+⚡ Don't forget to plug your machine into a power source and keep the lid open (or configure lid-close to not suspend) before you go!
 ```
 (Replace N and M with actual task count and group count.)
 
@@ -314,10 +322,11 @@ WHILE any group state file has at least one task with status "pending" or "block
       Write group state file.
 ```
 
-**8. Kill caffeinate and print combined summary**
+**8. Kill sleep inhibitor and print combined summary**
 
 ```bash
-kill $(cat /tmp/overnight-coder-caffeinate-{BACKLOG_SLUG}.pid 2>/dev/null) 2>/dev/null || true
+_pid=$(cat /tmp/overnight-coder-caffeinate-{BACKLOG_SLUG}.pid 2>/dev/null)
+[ -n "$_pid" ] && [ "$_pid" -gt 0 ] 2>/dev/null && kill "$_pid" 2>/dev/null || true
 rm -f /tmp/overnight-coder-caffeinate-{BACKLOG_SLUG}.pid
 ```
 
@@ -409,7 +418,7 @@ Write to `<repo-root>/{STATE_FILE}`:
 }
 ```
 
-Compute `backlog_hash` by running `md5 -q <backlog_file> | head -c 8` (or equivalent). The `branch` field is set when task is dispatched (Step 5a) so retries can clean up the previous branch.
+Compute `backlog_hash` using the cross-platform command: `if command -v md5sum &>/dev/null; then md5sum <backlog_file> | head -c 8; else md5 -q <backlog_file> | head -c 8; fi`. The `branch` field is set when task is dispatched (Step 5a) so retries can clean up the previous branch.
 
 ### Step 5: Per-Task Loop
 
@@ -417,11 +426,19 @@ Compute `backlog_hash` by running `md5 -q <backlog_file> | head -c 8` (or equiva
 
 **Sleep announcement:**
 
-Run this command to prevent your Mac from sleeping during the overnight run and write the PID to a file (shell variables do not survive across separate tool calls):
+Run this command to prevent your machine from idle-sleeping during the overnight run and write the PID to a file (shell variables do not survive across separate tool calls). Note: this does **not** prevent lid-close suspend on all platforms — the user-facing message below tells the user to keep the lid open or configure their OS separately.
 
 ```bash
-caffeinate -i &
-echo $! > /tmp/overnight-coder-caffeinate-{BACKLOG_SLUG}.pid
+if command -v caffeinate &>/dev/null; then
+  caffeinate -is &
+  echo $! > /tmp/overnight-coder-caffeinate-{BACKLOG_SLUG}.pid
+elif command -v systemd-inhibit &>/dev/null; then
+  systemd-inhibit --what=idle:sleep:handle-lid-switch --who=overnight-coder --why="Running overnight backlog" sleep infinity &
+  echo $! > /tmp/overnight-coder-caffeinate-{BACKLOG_SLUG}.pid
+else
+  echo "WARNING: No sleep inhibitor found (caffeinate or systemd-inhibit required). Ensure your machine stays awake manually."
+  echo "" > /tmp/overnight-coder-caffeinate-{BACKLOG_SLUG}.pid
+fi
 ```
 
 Then print:
@@ -432,7 +449,7 @@ All set! You can go to sleep now. 🌙 Good night!
 I'll work through your N tasks while you rest.
 See you in the morning with a full summary.
 
-⚡ Don't forget to plug your Mac into a power source before you go!
+⚡ Don't forget to plug your machine into a power source and keep the lid open (or configure lid-close to not suspend) before you go!
 ```
 (Replace N with the actual pending task count.)
 
@@ -519,9 +536,10 @@ Continue to the next `pending` task.
 
 **Announce:** `"[Step 6/6] All tasks complete! Generating summary..."`
 
-**Kill caffeinate (sequential mode only — parallel mode kills it in Step 8):**
+**Kill sleep inhibitor (sequential mode only — parallel mode kills it in Step 8):**
 ```bash
-kill $(cat /tmp/overnight-coder-caffeinate-{BACKLOG_SLUG}.pid 2>/dev/null) 2>/dev/null || true
+_pid=$(cat /tmp/overnight-coder-caffeinate-{BACKLOG_SLUG}.pid 2>/dev/null)
+[ -n "$_pid" ] && [ "$_pid" -gt 0 ] 2>/dev/null && kill "$_pid" 2>/dev/null || true
 rm -f /tmp/overnight-coder-caffeinate-{BACKLOG_SLUG}.pid
 ```
 
