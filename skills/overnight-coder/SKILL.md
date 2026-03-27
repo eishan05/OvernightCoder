@@ -36,7 +36,7 @@ Do not proceed until the user confirms.
 
 ### Step 2: Check for Previous Run
 
-Look for `overnight-coder-state.json` in the repo root.
+Look for `{STATE_FILE}` in the repo root.
 
 If found, ask:
 
@@ -60,7 +60,7 @@ Store as `autonomous` or `review`.
 
 **Skip this step if resuming** — the existing state file already has the task list. Only run this step on a fresh start.
 
-Write to `<repo-root>/overnight-coder-state.json`:
+Write to `<repo-root>/{STATE_FILE}`:
 
 ```json
 {
@@ -116,7 +116,7 @@ Write state file after each result.
 
 Call `/compact` to compress accumulated context.
 
-Then immediately re-read `overnight-coder-state.json` to restore the task list (compaction may clear working memory).
+Then immediately re-read `{STATE_FILE}` to restore the task list (compaction may clear working memory).
 
 Continue to the next `pending` task.
 
