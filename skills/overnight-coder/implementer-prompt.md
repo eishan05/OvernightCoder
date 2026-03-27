@@ -17,6 +17,8 @@ Do not ask questions. Work fully autonomously. If something is unclear, make a r
 
 Create an isolated worktree on branch `{{BRANCH_NAME}}`. Do not modify the current local branch or main. The worktree should use `.worktrees/` or wherever the project convention is.
 
+Record the worktree path returned by `superpowers:using-git-worktrees`. You will use this path when cleaning up in Step 5. All subsequent git and gh commands in Steps 2-5 must be run from **inside the worktree directory**.
+
 ---
 
 ## Step 2: Implement the Task
@@ -31,11 +33,17 @@ Before declaring implementation done: **REQUIRED SUB-SKILL:** Use `superpowers:v
 
 ## Step 3: Push Branch and Create PR
 
+Verify GitHub CLI is authenticated: `gh auth status`. If it fails, emit `FAILED gh CLI not authenticated` as your last line.
+
 From inside the worktree:
 
 ```bash
 git push -u origin {{BRANCH_NAME}}
+```
 
+If `git push` fails, immediately emit `FAILED git push failed: <error message>` as your last line and stop.
+
+```bash
 gh pr create \
   --title "<concise title: what this PR does>" \
   --body "$(cat <<'EOF'
@@ -59,7 +67,7 @@ Note the PR URL printed by `gh pr create`.
 
 ## Step 4: Codex Review Loop
 
-**REQUIRED SKILL:** `codex-review-loop`
+**REQUIRED SUB-SKILL:** `codex-review-loop`
 
 Run the review loop against the PR. Settings:
 - **Model:** `gpt-5.4`
@@ -88,15 +96,7 @@ WHILE not clean AND outer_cycles < 3:
     → exit — declare clean
 
 IF outer_cycles == 3 with issues still open:
-  → exit — hard cap reached
-```
-
-After every round of fixes, push commits so Codex reviews the latest code:
-
-```bash
-git add -A
-git commit -m "fix: address codex review feedback"
-git push
+  → exit — hard cap reached, proceed to Step 5 as normal (declare done)
 ```
 
 ---
@@ -107,10 +107,10 @@ git push
 
 ```bash
 # Merge the PR
-gh pr merge {{BRANCH_NAME}} --merge --delete-branch
+gh pr merge <PR-url> --merge --delete-branch
 
-# Clean up worktree (replace <worktree-path> with actual path)
-git worktree remove <worktree-path>
+# Clean up worktree
+git worktree remove <recorded-worktree-path>  # (the path you recorded in Step 1)
 ```
 
 Your final line must be:
@@ -122,7 +122,7 @@ DONE_MERGED
 
 ```bash
 # Clean up worktree, leave PR open
-git worktree remove <worktree-path>
+git worktree remove <recorded-worktree-path>  # (the path you recorded in Step 1)
 ```
 
 Your final line must be:
@@ -134,7 +134,7 @@ DONE <PR-url>
 
 ```bash
 # Clean up worktree if it exists
-git worktree remove <worktree-path> 2>/dev/null || true
+git worktree remove <recorded-worktree-path> 2>/dev/null || true  # (the path you recorded in Step 1)
 ```
 
 Your final line must be:
@@ -147,6 +147,7 @@ FAILED <one-line reason explaining what went wrong>
 ## Rules
 
 - The **very last line** of your response must be exactly one of: `DONE_MERGED`, `DONE <url>`, or `FAILED <reason>`. No other text after it.
+- No punctuation, trailing period, or explanation after the status token. `DONE_MERGED` is three words joined by underscores — nothing else on that line.
 - Never touch `main` or the original branch directly.
 - Never skip `superpowers:test-driven-development`.
 - Never skip the Codex review loop.
