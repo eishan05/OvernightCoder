@@ -36,6 +36,8 @@ Do not proceed until the user confirms.
 
 ### Step 2: Ask Merge Preference
 
+**Skip this step if resuming** — read `merge_preference` from the existing state file instead.
+
 Ask via `AskUserQuestion`:
 
 > "Merge preference: **autonomous** (auto-merge PRs to main after Codex review) or **review** (leave PRs open for you to review)?"
