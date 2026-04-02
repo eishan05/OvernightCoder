@@ -114,20 +114,16 @@ Read `grouper-prompt.md` (in the same directory as this file). Replace all three
 
 Dispatch a `general-purpose` Agent with the filled prompt.
 
-**4. Present grouping for approval**
+**4. Announce grouping and proceed**
 
-The grouper returns named groups with `ordered: true/false` per group. If any group has `ordered: true`, include this note when presenting: "⚠️ One or more groups have ordering dependencies — tasks in those groups must build on earlier tasks' merged output."
+The grouper returns named groups with `ordered: true/false` per group. Announce the groups to the user but do **not** ask for confirmation — proceed immediately:
 
-Present the groups to the user:
-
-> "Proposed parallel groups:
+> "Parallel groups:
 > - **auth** (tasks 1, 3, 5): Authentication and session handling
 > - **ui** (tasks 2, 4): Frontend components
-> - **api** (tasks 6, 7, 8): REST API endpoints
->
-> Proceed with this grouping? (y/n or describe adjustments)"
+> - **api** (tasks 6, 7, 8): REST API endpoints"
 
-Do not proceed until the user confirms. If the user requests adjustments, re-describe the grouping with their changes and confirm again.
+If any group has `ordered: true`, append: "⚠️ One or more groups have ordering dependencies — tasks in those groups must build on earlier tasks' merged output."
 
 **5. Ask merge preference and write orchestrator manifest**
 
