@@ -90,17 +90,14 @@ If incomplete groups are found, ask:
 - **Yes:** Read `MERGE_PREFERENCE` from the orchestrator manifest file `overnight-coder-parallel-{BACKLOG_SLUG}.json` (written at Step 5 of setup). If the manifest does not exist (interrupted before manifest was written), ask the user for merge preference again. In each group state file, reset any tasks with status `in_progress` to `pending` (the agent may have been mid-flight when interrupted). Start the sleep inhibitor (same as Step 6.6 — write PID to `/tmp/overnight-coder-caffeinate-{BACKLOG_SLUG}.pid`) before proceeding. Skip to Step 7, re-using existing batch files and state files. Only dispatch implementers for incomplete groups.
 - **No:** Before deleting any state files, read each `overnight-coder-state-{BACKLOG_SLUG}-{group}.json` and collect all task `branch` values that are non-null. For each collected branch, run the same pre-flight cleanup used for sequential retries (remove stale worktree, delete local branch, delete remote branch, close open PR — see Step 5a). Then delete all `overnight-batch-{BACKLOG_SLUG}-*.md` files, all `overnight-coder-state-{BACKLOG_SLUG}-*.json` files, and the `overnight-coder-parallel-{BACKLOG_SLUG}.json` manifest. Proceed to step 2.
 
-**2. Extract and confirm task list**
+**2. Extract task list**
 
-Read the backlog file provided by the user and extract a flat numbered task list using the same parsing rules as Step 1. Present the list and confirm with the user before proceeding:
+Read the backlog file provided by the user and extract a flat numbered task list using the same parsing rules as Step 1. Present the list and proceed immediately — do not ask for confirmation:
 
 > "I found N tasks:
 > 1. Add user authentication
 > 2. Fix login redirect bug
-> ...
-> Does this look right? (y/n or edit)"
-
-Do not proceed until the user confirms. This is required even in parallel mode.
+> ..."
 
 **3. Invoke grouper subagent**
 
@@ -110,7 +107,7 @@ Read `grouper-prompt.md` (in the same directory as this file). Replace all three
 |---|---|
 | `{{TODO_FILE}}` | The backlog file path provided by the user |
 | `{{REPO_PATH}}` | Output of `git rev-parse --show-toplevel` |
-| `{{CONFIRMED_TASKS}}` | The exact numbered task list confirmed by the user in step 2 (verbatim — one task per line, formatted as `1. description`) |
+| `{{CONFIRMED_TASKS}}` | The exact numbered task list extracted in step 2 (verbatim — one task per line, formatted as `1. description`) |
 
 Dispatch a `general-purpose` Agent with the filled prompt.
 
@@ -350,15 +347,12 @@ PRs created:
 
 Read the backlog file provided by the user (accepts any format — markdown checklist, numbered list, prose, GitHub issues export, etc.). Extract a flat ordered list of task descriptions using your judgment.
 
-Present the extracted list and confirm:
+Present the extracted list and proceed immediately — do not ask for confirmation:
 
 > "I found N tasks:
 > 1. Add user authentication
 > 2. Fix login redirect bug
-> 3. Add payment module
-> Does this look right? (y/n or edit)"
-
-Do not proceed until the user confirms.
+> 3. Add payment module"
 
 ### Step 2: Check for Previous Run
 
@@ -560,7 +554,7 @@ Omit the "Failed tasks:" section if there are no failed tasks. Omit "PRs created
 ## Red Flags
 
 **Never:**
-- Proceed without user confirming the extracted task list — in sequential mode this happens in Step 1; in parallel mode the orchestrator confirms tasks in Parallel Mode Setup step 2
+- Skip presenting the extracted task list to the user — always announce what was found before proceeding
 - Skip asking merge preference — in sequential mode ask in Step 3; in parallel mode the orchestrator collects it in Parallel Mode Setup step 5
 - Dispatch implementers in parallel within sequential mode (one at a time — branch conflicts)
 - Forget `/compact` between tasks

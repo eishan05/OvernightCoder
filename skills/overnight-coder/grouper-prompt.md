@@ -7,7 +7,7 @@ You are the overnight-coder grouper. Your job: divide a confirmed task list into
 
 ## Step 1: Use the Confirmed Task List
 
-The orchestrator has already extracted and confirmed the following task list with the user. Use this list verbatim — do not re-read `{{TODO_FILE}}` or reinterpret the tasks. Group exactly these tasks:
+The orchestrator has already extracted the following task list from the backlog. Use this list verbatim — do not re-read `{{TODO_FILE}}` or reinterpret the tasks. Group exactly these tasks:
 
 ```
 {{CONFIRMED_TASKS}}
