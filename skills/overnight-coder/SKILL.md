@@ -18,6 +18,7 @@ Add the following patterns to the repo's `.gitignore` if not already present (co
 overnight-batch-*
 overnight-coder-state-*
 overnight-coder-parallel-*.json
+.overnight-coder-auto-resume
 ```
 
 Verify before starting. If any are missing, stop and provide these installation steps:
@@ -75,7 +76,27 @@ Look for previous run artifacts:
 - **Parallel:** orchestrator manifest `overnight-coder-parallel-{BACKLOG_SLUG}.json` and batch files `overnight-batch-{BACKLOG_SLUG}-*.md`. If batch files exist, read each corresponding group state file to identify incomplete groups.
 - **Sequential:** state file `overnight-coder-state-{BACKLOG_SLUG}.json`. If found, read it to get task counts (done, failed, total) and compute whether `backlog_hash` has changed.
 
-**0.5c. Ask all questions in a single prompt**
+**0.5c. Auto-resume check**
+
+Before asking any questions, check if the file `.overnight-coder-auto-resume` exists in the repo root. This sentinel is created by the `overnight-runner.sh` wrapper script for headless operation (both first runs and restarts after usage limits).
+
+The sentinel is a JSON file:
+```json
+{"backlog_file": "TODO.md", "mode": "sequential", "merge_preference": "autonomous"}
+```
+
+If the sentinel exists:
+1. Read and parse its JSON content, then delete it: `rm -f .overnight-coder-auto-resume`
+2. **Validate:** Compare the sentinel's `backlog_file` value against the backlog file the user specified in the current invocation. If they don't match (different backlog), ignore the sentinel entirely — it's stale from another run. Proceed to the normal prompt below.
+3. Read `MODE` and `MERGE_PREFERENCE` from the sentinel.
+4. Decide resume vs fresh based on the state files found in 0.5b:
+   - **If resumable state exists:** Set `RESUME = true`. If both sequential and parallel resumable state exist, prefer the mode that matches the sentinel's `mode` field; if neither matches, prefer whichever was most recently modified. Override `MERGE_PREFERENCE` with the value from the existing state file (sequential) or manifest (parallel), since the original run's preference takes precedence.
+   - **If no resumable state exists:** Set `RESUME = false`. Use `MODE` and `MERGE_PREFERENCE` directly from the sentinel (this is a first run in headless mode).
+5. Skip the `AskUserQuestion` entirely — proceed directly to Step 0.5d with the resolved values (do not "parse the user's response" — the values are already set).
+
+If the sentinel does not exist, proceed to the normal prompt below.
+
+**0.5c (continued). Ask all questions in a single prompt**
 
 Use one `AskUserQuestion` with a combined prompt based on what was found:
 
@@ -109,7 +130,11 @@ Use one `AskUserQuestion` with a combined prompt based on what was found:
 
 **Normalization before prompt generation:**
 
-Before choosing which prompt to show, classify the state into exactly one exclusive category. A state file is **resumable** if it has at least one task with status `pending`, `in_progress`, `failed`, or `blocked`. A completed state file (all tasks `done`) is **non-resumable**.
+Before choosing which prompt to show, classify the state into exactly one exclusive category. A state file is **resumable** if it has at least one task the resume path would actually process:
+- **Sequential state files:** resumable if any task has status `pending`, `in_progress`, `failed`, or `blocked` (sequential resume resets all `failed` tasks).
+- **Parallel group state files:** resumable if any task has status `pending`, `in_progress`, or `blocked` (parallel resume only resets `in_progress`; permanently `failed` tasks stay terminal).
+
+A state file where all tasks are `done` (or, for parallel, all tasks are `done` or `failed`) is **non-resumable**.
 
 1. **`resumable_sequential_only`** — resumable sequential state file exists; no resumable parallel artifacts
 2. **`resumable_parallel_only`** — resumable parallel batch files with incomplete groups exist; no resumable sequential state file
@@ -165,6 +190,7 @@ Proceed to Parallel Mode Setup (if parallel) or Step 1 (if sequential).
 Previous-run detection and the resume decision were handled in Step 0.5. Use the `RESUME` flag.
 
 - If the manifest exists but **no** batch files exist: the previous run was interrupted between manifest creation and batch file creation. Delete the orphaned manifest and proceed to step 2 as a fresh run.
+- If batch files exist but not all corresponding group state files exist (some or none were created): the previous run was interrupted during group state initialization (step 6). Delete all batch files, any partially-created group state files (`overnight-coder-state-{BACKLOG_SLUG}-*.json`), and the manifest, then proceed to step 2 as a fresh run.
 
 - **If `RESUME` is true:** Use the `MERGE_PREFERENCE` collected in Step 0.5d (already read from manifest during 0.5d). In each group state file, reset any tasks with status `in_progress` to `pending` (the agent may have been mid-flight when interrupted). Start the sleep inhibitor (same as Step 6.6 — write PID to `/tmp/overnight-coder-caffeinate-{BACKLOG_SLUG}.pid`) before proceeding. Skip to Step 7, re-using existing batch files and state files. Only dispatch implementers for incomplete groups.
 - **If `RESUME` is false (fresh start):** Before deleting any state files, read each `overnight-coder-state-{BACKLOG_SLUG}-{group}.json` and collect all task `branch` values that are non-null. For each collected branch, run the same pre-flight cleanup used for sequential retries (remove stale worktree, delete local branch, delete remote branch, close open PR — see Step 5a). Then delete all `overnight-batch-{BACKLOG_SLUG}-*.md` files, all `overnight-coder-state-{BACKLOG_SLUG}-*.json` files, and the `overnight-coder-parallel-{BACKLOG_SLUG}.json` manifest. Proceed to step 2.

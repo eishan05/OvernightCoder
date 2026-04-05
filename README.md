@@ -22,7 +22,7 @@ In the morning, you get a summary of what got done and links to every PR.
 
 Before using OvernightCoder, make sure you have:
 
-- **A Mac or Linux machine with systemd** (it keeps your computer awake overnight — uses `caffeinate` on macOS or `systemd-inhibit` on Linux)
+- **A Mac (with `caffeinate`) or Linux machine with systemd (with `systemd-inhibit`)** — used to keep your computer awake overnight
 - **Claude Code** with the [Superpowers](https://superpowers.so) plugin installed
 - **Codex CLI** installed from [github.com/openai/codex](https://github.com/openai/codex) (run `codex --version` to check)
 - **GitHub CLI** installed from [cli.github.com](https://cli.github.com) and logged in (run `gh auth status` to check)
@@ -52,6 +52,7 @@ git clone https://github.com/eishan05/codex-review-loop ~/.claude/skills/codex-r
 # 2. Install overnight-coder
 git clone https://github.com/eishan05/OvernightCoder /tmp/OvernightCoder
 cp -r /tmp/OvernightCoder/skills/overnight-coder ~/.claude/skills/overnight-coder
+cp /tmp/OvernightCoder/overnight-runner.sh /path/to/your/project/  # optional: for auto-restart on usage limits
 rm -rf /tmp/OvernightCoder
 ```
 
@@ -104,6 +105,56 @@ Use the overnight-coder skill with TODO.md
 ```
 
 It saves progress to a state file, so it'll ask if you want to pick up where you left off.
+
+## Auto-Restart on Usage Limits
+
+If you're on a Claude Max plan, you may hit usage limits during long overnight runs. Normally this requires you to manually select "Wait" and then type "continue" after the limit resets — but you're asleep.
+
+The `overnight-runner.sh` wrapper script handles this automatically. It runs Claude Code in headless mode and restarts it after a cooldown when limits are hit, using the skill's built-in resume mechanism.
+
+**Setup:** Copy the wrapper script into your project root:
+
+```bash
+curl -o overnight-runner.sh https://raw.githubusercontent.com/eishan05/OvernightCoder/main/overnight-runner.sh && chmod +x overnight-runner.sh
+```
+
+**Usage:** From your project root:
+
+```bash
+./overnight-runner.sh TODO.md
+```
+
+That's it. Go to sleep. If Claude hits a usage limit, the wrapper waits 60 minutes (configurable) and restarts.
+
+**Options:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--mode <sequential\|parallel>` | `sequential` | Execution mode |
+| `--merge <autonomous\|review>` | `autonomous` | Merge preference |
+| `--cooldown <minutes>` | `60` | Wait between restarts |
+| `--max-restarts <N>` | `10` | Give up after N restarts |
+
+```bash
+./overnight-runner.sh TODO.md --mode parallel --merge review
+./overnight-runner.sh TODO.md --cooldown 90 --max-restarts 5
+./overnight-runner.sh TODO.md -- --model claude-sonnet-4-6  # extra claude args after --
+```
+
+**How it works:**
+
+1. Writes a sentinel file with your mode/merge preferences so Claude doesn't need to ask
+2. Launches `claude -p "Use the overnight-coder skill with TODO.md" --yes`
+3. When Claude exits (usage limit, crash, etc.), checks state files and run artifacts for remaining tasks
+4. If tasks remain, waits the cooldown period, then restarts with an auto-resume sentinel
+5. Repeats until no resumable tasks remain or max restarts reached
+
+**Requirements:**
+
+- Everything needed for OvernightCoder (see above)
+- `python3` (used to inspect JSON state files — already installed on macOS and most Linux)
+
+All output is logged to `overnight-runner.log` in your project root.
 
 ## Configuration
 
