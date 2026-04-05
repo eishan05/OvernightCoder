@@ -61,34 +61,113 @@ All worktrees are created from `$BASE_REMOTE/$BASE_BRANCH`, so a local checkout 
 
 Store `base_remote` and `base_branch` in the state file. Use `$BASE_REMOTE` and `$BASE_BRANCH` everywhere `origin` and `main` would otherwise be hardcoded.
 
-### Step 0.5: Parallel Mode Check
+### Step 0.5: Collect All User Input
 
-Ask the user via `AskUserQuestion`:
+This step frontloads every user question so the rest of the run is fully autonomous. After this step, do not ask any further questions.
 
-> "Run tasks in **parallel** (groups independent tasks into batches and runs batches simultaneously — faster for large backlogs) or **sequential** (one task at a time, default)?"
+**0.5a. Derive BACKLOG_SLUG**
 
-- **Sequential:** Derive `BACKLOG_SLUG` from the backlog file path: strip the filename's extension, lowercase, replace non-alphanumeric characters with hyphens, collapse multiple hyphens, then append `-` followed by the first 6 characters of the MD5 hash of the absolute path. Use the cross-platform hash command: `if command -v md5sum &>/dev/null; then printf "%s" "<absolute_path>" | md5sum | head -c 6; else printf "%s" "<absolute_path>" | md5 | head -c 6; fi`. This prevents collisions between different backlogs with the same filename (e.g., `TODO.md` at `/proj/foo/TODO.md` → `todo-a3f9c2`). Set `STATE_FILE = overnight-coder-state-{BACKLOG_SLUG}.json`. Proceed to Step 1.
-- **Parallel:** Proceed to Parallel Mode Setup below.
+Derive `BACKLOG_SLUG` from the backlog file path: strip the filename's extension, lowercase, replace non-alphanumeric characters with hyphens, collapse multiple hyphens, then append `-` followed by the first 6 characters of the MD5 hash of the absolute path. Use the cross-platform hash command: `if command -v md5sum &>/dev/null; then printf "%s" "<absolute_path>" | md5sum | head -c 6; else printf "%s" "<absolute_path>" | md5 | head -c 6; fi`. This prevents collisions between different backlogs with the same filename (e.g., `TODO.md` at `/proj/foo/TODO.md` → `todo-a3f9c2`).
+
+**0.5b. Check for previous runs**
+
+Look for previous run artifacts:
+- **Parallel:** orchestrator manifest `overnight-coder-parallel-{BACKLOG_SLUG}.json` and batch files `overnight-batch-{BACKLOG_SLUG}-*.md`. If batch files exist, read each corresponding group state file to identify incomplete groups.
+- **Sequential:** state file `overnight-coder-state-{BACKLOG_SLUG}.json`. If found, read it to get task counts (done, failed, total) and compute whether `backlog_hash` has changed.
+
+**0.5c. Ask all questions in a single prompt**
+
+Use one `AskUserQuestion` with a combined prompt based on what was found:
+
+**If no previous run found:**
+
+> "Two choices before I go autonomous:
+> 1. **Mode:** `parallel` or `sequential`?
+> 2. **Merge:** `autonomous` (auto-merge PRs) or `review` (leave PRs open)?
+>
+> Reply like: `parallel, autonomous`"
+
+**If previous sequential run found:**
+
+> "Found a previous sequential run: N/M tasks done, X failed. [⚠️ Backlog file has changed since last run.]
+>
+> - `resume` — pick up where I left off
+> - `fresh parallel, autonomous` or `fresh parallel, review` — start over in parallel
+> - `fresh sequential, autonomous` or `fresh sequential, review` — start over sequentially
+>
+> Reply like: `resume` or `fresh sequential, autonomous`"
+
+**If previous parallel run found with incomplete groups:**
+
+> "Found a previous parallel run. Incomplete groups: {group names}.
+>
+> - `resume` — pick up where I left off
+> - `fresh parallel, autonomous` or `fresh parallel, review` — start over in parallel
+> - `fresh sequential, autonomous` or `fresh sequential, review` — start over sequentially
+>
+> Reply like: `resume` or `fresh parallel, autonomous`"
+
+**Normalization before prompt generation:**
+
+Before choosing which prompt to show, classify the state into exactly one exclusive category. A state file is **resumable** if it has at least one task with status `pending`, `in_progress`, `failed`, or `blocked`. A completed state file (all tasks `done`) is **non-resumable**.
+
+1. **`resumable_sequential_only`** — resumable sequential state file exists; no resumable parallel artifacts
+2. **`resumable_parallel_only`** — resumable parallel batch files with incomplete groups exist; no resumable sequential state file
+3. **`both_resumable`** — both a resumable sequential state file AND resumable parallel batch files exist
+4. **`none`** — no resumable artifacts of either type
+
+**Cleanup during normalization:** Delete all non-resumable artifacts immediately — orphan parallel manifests, all-complete parallel group state files and batch files, and completed sequential state files. This prevents stale files from triggering false detection on future runs.
+
+**Prompt for `none`:** Use the "no previous run" prompt above.
+
+**Prompt for `resumable_sequential_only`:** Use the "previous sequential run" prompt above. Include the backlog-change warning if `backlog_hash` differs.
+
+**Prompt for `resumable_parallel_only`:** Use the "previous parallel run" prompt above.
+
+**Prompt for `both_resumable`:**
+
+> "Found both a previous sequential run (N/M done) and a previous parallel run (incomplete groups: {names}). [⚠️ Backlog file has changed since the sequential run.]
+>
+> - `resume sequential` or `resume parallel`
+> - `fresh parallel, autonomous` or `fresh parallel, review`
+> - `fresh sequential, autonomous` or `fresh sequential, review`
+>
+> Reply like: `resume sequential` or `fresh parallel, autonomous`"
+
+Include the backlog-change warning if the sequential state's `backlog_hash` no longer matches.
+
+**0.5d. Parse and validate response**
+
+Parse the user's response and extract:
+- `RESUME` (true/false)
+- `MODE` (`parallel` or `sequential`) — explicit from response; on resume, explicit from `resume sequential` / `resume parallel`, or inferred if only one type of resumable state exists
+- `MERGE_PREFERENCE` (`autonomous` or `review`) — if resuming, read from existing state file (sequential) or manifest (parallel)
+
+**Validation:** Retry within Step 0.5 if the response is incomplete — do not proceed with missing values. Branch the retry message by case:
+- Ambiguous resume (e.g. bare `resume` when both types exist): "Which run? Reply `resume sequential` or `resume parallel`"
+- Fresh run missing merge preference (e.g. bare `parallel`): "I need both mode and merge preference — reply like: `parallel, autonomous`"
+- Unrecognized input: tailor the example to the current category — for `none` show only fresh-run formats (`parallel, autonomous`); for `both_resumable` show `resume sequential` / `resume parallel`; otherwise show the most relevant example for the category
+
+If `MODE` is sequential: set `STATE_FILE = overnight-coder-state-{BACKLOG_SLUG}.json`.
+
+> **Note:** In parallel mode, if the grouper discovers ordered task groups, `MERGE_PREFERENCE` is overridden to `autonomous` automatically (with a notification). This is the only post-collection adjustment.
+
+Proceed to Parallel Mode Setup (if parallel) or Step 1 (if sequential).
 
 #### Parallel Mode Setup
 
-**0. Derive BACKLOG_SLUG**
+**0. BACKLOG_SLUG**
 
-Before doing anything else, derive `BACKLOG_SLUG` from the backlog file path using the same hashing rule as sequential mode: strip the filename extension, lowercase, replace non-alphanumeric characters with hyphens, collapse multiple hyphens, then append `-` followed by the first 6 characters of the MD5 hash of the absolute path. Use the cross-platform hash command: `if command -v md5sum &>/dev/null; then printf "%s" "<absolute_path>" | md5sum | head -c 6; else printf "%s" "<absolute_path>" | md5 | head -c 6; fi`.
+`BACKLOG_SLUG` was already derived in Step 0.5a.
 
-**1. Check for an in-progress parallel run**
+**1. Handle previous parallel run (if applicable)**
 
-First check for the orchestrator manifest `overnight-coder-parallel-{BACKLOG_SLUG}.json`. Then look for any files matching `overnight-batch-{BACKLOG_SLUG}-*.md` in the repo root.
+Previous-run detection and the resume decision were handled in Step 0.5. Use the `RESUME` flag.
 
 - If the manifest exists but **no** batch files exist: the previous run was interrupted between manifest creation and batch file creation. Delete the orphaned manifest and proceed to step 2 as a fresh run.
-- If batch files exist: read each corresponding `overnight-coder-state-{BACKLOG_SLUG}-{group}.json` (if it exists) to determine which groups are incomplete (have pending, in_progress, or failed tasks, or have no state file yet).
 
-If incomplete groups are found, ask:
-
-> "Found a previous parallel run. Incomplete groups: auth, ui. Resume them? (y/n)"
-
-- **Yes:** Read `MERGE_PREFERENCE` from the orchestrator manifest file `overnight-coder-parallel-{BACKLOG_SLUG}.json` (written at Step 5 of setup). If the manifest does not exist (interrupted before manifest was written), ask the user for merge preference again. In each group state file, reset any tasks with status `in_progress` to `pending` (the agent may have been mid-flight when interrupted). Start the sleep inhibitor (same as Step 6.6 — write PID to `/tmp/overnight-coder-caffeinate-{BACKLOG_SLUG}.pid`) before proceeding. Skip to Step 7, re-using existing batch files and state files. Only dispatch implementers for incomplete groups.
-- **No:** Before deleting any state files, read each `overnight-coder-state-{BACKLOG_SLUG}-{group}.json` and collect all task `branch` values that are non-null. For each collected branch, run the same pre-flight cleanup used for sequential retries (remove stale worktree, delete local branch, delete remote branch, close open PR — see Step 5a). Then delete all `overnight-batch-{BACKLOG_SLUG}-*.md` files, all `overnight-coder-state-{BACKLOG_SLUG}-*.json` files, and the `overnight-coder-parallel-{BACKLOG_SLUG}.json` manifest. Proceed to step 2.
+- **If `RESUME` is true:** Use the `MERGE_PREFERENCE` collected in Step 0.5d (already read from manifest during 0.5d). In each group state file, reset any tasks with status `in_progress` to `pending` (the agent may have been mid-flight when interrupted). Start the sleep inhibitor (same as Step 6.6 — write PID to `/tmp/overnight-coder-caffeinate-{BACKLOG_SLUG}.pid`) before proceeding. Skip to Step 7, re-using existing batch files and state files. Only dispatch implementers for incomplete groups.
+- **If `RESUME` is false (fresh start):** Before deleting any state files, read each `overnight-coder-state-{BACKLOG_SLUG}-{group}.json` and collect all task `branch` values that are non-null. For each collected branch, run the same pre-flight cleanup used for sequential retries (remove stale worktree, delete local branch, delete remote branch, close open PR — see Step 5a). Then delete all `overnight-batch-{BACKLOG_SLUG}-*.md` files, all `overnight-coder-state-{BACKLOG_SLUG}-*.json` files, and the `overnight-coder-parallel-{BACKLOG_SLUG}.json` manifest. Proceed to step 2.
 
 **2. Extract task list**
 
@@ -122,15 +201,11 @@ The grouper returns named groups with `ordered: true/false` per group. Announce 
 
 If any group has `ordered: true`, append: "⚠️ One or more groups have ordering dependencies — tasks in those groups must build on earlier tasks' merged output."
 
-**5. Ask merge preference and write orchestrator manifest**
+**5. Apply merge preference and write orchestrator manifest**
 
-If any group has `ordered: true` in the grouper output, set `MERGE_PREFERENCE = autonomous` automatically and inform the user: "Merge preference set to **autonomous** — one or more task groups have ordering dependencies and require PRs to be merged before dependent tasks can run."
+Use the `MERGE_PREFERENCE` collected in Step 0.5. However, if any group has `ordered: true` in the grouper output, override `MERGE_PREFERENCE = autonomous` and inform the user: "Merge preference overridden to **autonomous** — one or more task groups have ordering dependencies and require PRs to be merged before dependent tasks can run."
 
-Otherwise, ask via `AskUserQuestion`:
-
-> "Merge preference: **autonomous** (auto-merge PRs to main after Codex review) or **review** (leave PRs open for you to review)?"
-
-Store the answer as `MERGE_PREFERENCE` (`autonomous` or `review`). Immediately write `<repo-root>/overnight-coder-parallel-{BACKLOG_SLUG}.json`:
+Immediately write `<repo-root>/overnight-coder-parallel-{BACKLOG_SLUG}.json`:
 
 ```json
 { "merge_preference": "<autonomous|review>", "backlog_file": "<path>" }
@@ -345,6 +420,8 @@ PRs created:
 
 **Announce:** `"[Step 1/6] Parsing backlog..."`
 
+**Skip this step if resuming** — the existing state file already has the task list. Instead, announce: "Resuming previous run — N tasks remaining." Then proceed to Step 2.
+
 Read the backlog file provided by the user (accepts any format — markdown checklist, numbered list, prose, GitHub issues export, etc.). Extract a flat ordered list of task descriptions using your judgment.
 
 Present the extracted list and proceed immediately — do not ask for confirmation:
@@ -358,33 +435,18 @@ Present the extracted list and proceed immediately — do not ask for confirmati
 
 **Announce:** `"[Step 2/6] Checking for a previous run..."`
 
-Look for `{STATE_FILE}` in the repo root.
+Previous-run detection and the resume decision were handled in Step 0.5. Use the `RESUME` flag.
 
-If found: compute the current backlog hash and compare it to `backlog_hash` in the state file. If they differ, warn the user:
+- **If `RESUME` is true:** Skip `done` tasks. Reset `in_progress` → `pending` (agent may have been mid-flight). For `failed` tasks: reset `attempts` to 1 and status to `pending` — they get one fresh attempt; if that attempt also fails (attempts reaches 2), mark permanently `failed`.
+- **If `RESUME` is false (or no previous run):** If an old state file exists, read all task `branch` fields from it before overwriting. For each branch, run the same pre-flight cleanup as retries (remove stale worktree, delete local branch, delete remote branch, close open PR). Then overwrite state file and start fresh.
 
-> "⚠️ The backlog file has changed since the last run. Resuming may cause the task list to diverge. Continue anyway, or start fresh?"
-
-Ask:
-
-> "Found previous run: N/M tasks complete, X failed. Resume? (y/n)"
-> (Read from state file: N = count of `done`, M = total tasks, X = count of `failed`)
-
-- **Yes:** Skip `done` tasks. Reset `in_progress` → `pending` (agent may have been mid-flight). For `failed` tasks: reset `attempts` to 1 and status to `pending` — they get one fresh attempt; if that attempt also fails (attempts reaches 2), mark permanently `failed`.
-- **No:** Read all task `branch` fields from the old state file before overwriting it. For each branch, run the same pre-flight cleanup as retries (remove stale worktree, delete local branch, delete remote branch, close open PR). Then overwrite state file and start fresh.
-
-### Step 3: Ask Merge Preference
+### Step 3: Apply Merge Preference
 
 **Announce:** `"[Step 3/6] Configuring merge preference..."`
 
 **Skip this step if resuming** — read `merge_preference` from the existing state file instead.
 
-Ask via `AskUserQuestion`:
-
-> "Merge preference: **autonomous** (auto-merge PRs to main after Codex review) or **review** (leave PRs open for you to review)?"
->
-> Note: if your backlog contains tasks with ordering dependencies (task B must build on task A's output), choose **autonomous** — in `review` mode, task A's PR stays open while task B runs, so B cannot build on A's changes.
-
-Store as `autonomous` or `review`.
+Use the `MERGE_PREFERENCE` collected in Step 0.5. No question needed.
 
 ### Step 4: Initialize State File
 
@@ -555,7 +617,7 @@ Omit the "Failed tasks:" section if there are no failed tasks. Omit "PRs created
 
 **Never:**
 - Skip presenting the extracted task list to the user — always announce what was found before proceeding
-- Skip asking merge preference — in sequential mode ask in Step 3; in parallel mode the orchestrator collects it in Parallel Mode Setup step 5
+- Skip collecting merge preference — must be gathered in Step 0.5 (or read from state file on resume)
 - Dispatch implementers in parallel within sequential mode (one at a time — branch conflicts)
 - Forget `/compact` between tasks
 - Forget to re-read state file after `/compact`

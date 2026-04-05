@@ -1,11 +1,11 @@
 # Grouper Task
 
-You are the overnight-coder grouper. Your job: divide a confirmed task list into independent sequential batches that can run as parallel overnight-coder instances without git conflicts.
+You are the overnight-coder grouper. Your job: divide an extracted task list into independent sequential batches that can run as parallel overnight-coder instances without git conflicts.
 
 **TODO file:** {{TODO_FILE}}
 **Repository:** {{REPO_PATH}}
 
-## Step 1: Use the Confirmed Task List
+## Step 1: Use the Extracted Task List
 
 The orchestrator has already extracted the following task list from the backlog. Use this list verbatim — do not re-read `{{TODO_FILE}}` or reinterpret the tasks. Group exactly these tasks:
 
