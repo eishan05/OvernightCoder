@@ -4,6 +4,8 @@ You're paying for Claude Code and Codex subscriptions. But when you go to bed, t
 
 Give it a list of tasks, go to sleep, and wake up to pull requests.
 
+Write-up: [OvernightCoder: working through a task list overnight](https://www.eishanlawrence.com/blog/overnight-coder).
+
 ## The Problem
 
 Most developers work on one thing at a time. Your backlog piles up. Meanwhile, you're paying for AI coding tools that do nothing for 8+ hours every night.
